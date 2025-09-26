@@ -59,7 +59,7 @@ jobs:
         REPORT_TYPE: ${{ steps.report_type.outputs.type }}
       run: |
         echo "Running ${{ steps.report_type.outputs.type }} report..."
-        python weather_bot.py
+        python main.py
     
     - name: Commit and push data files
       run: |
