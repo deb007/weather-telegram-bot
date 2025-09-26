@@ -1,11 +1,19 @@
-name: Daily Weather Report
+name: Daily Weather Reports
 
 on:
   schedule:
-    # Run daily at 8:00 AM UTC (adjust timezone as needed)
-    # Use https://crontab.guru/ to help with cron expressions
     - cron: '0 1 * * *'
+    - cron: '0 15 * * *'
   workflow_dispatch:  # Allows manual triggering
+    inputs:
+      report_type:
+        description: 'Type of report to run'
+        required: true
+        default: 'morning'
+        type: choice
+        options:
+        - morning
+        - evening
 
 jobs:
   send-weather-report:
@@ -14,6 +22,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -25,15 +35,40 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests
     
+    - name: Determine report type
+      id: report_type
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "type=${{ github.event.inputs.report_type }}" >> $GITHUB_OUTPUT
+        else
+          # Check if this is morning (8 AM UTC) or evening (8 PM UTC) cron
+          HOUR=$(date -u +%H)
+          if [ "$HOUR" = "08" ]; then
+            echo "type=morning" >> $GITHUB_OUTPUT
+          else
+            echo "type=evening" >> $GITHUB_OUTPUT
+          fi
+        fi
+    
     - name: Run weather report
       env:
         OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         CITY: ${{ secrets.CITY }}
+        REPORT_TYPE: ${{ steps.report_type.outputs.type }}
       run: |
-        python main.py
+        echo "Running ${{ steps.report_type.outputs.type }} report..."
+        python weather_bot.py
+    
+    - name: Commit and push data files
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add temp_readings.json morning_forecast.json 2>/dev/null || true
+        git diff --staged --quiet || git commit -m "Update weather data files - ${{ steps.report_type.outputs.type }} report"
+        git push || echo "No changes to push"
     
     - name: Log completion
       run: |
-        echo "Weather report sent at $(date)"
+        echo "${{ steps.report_type.outputs.type }} weather report sent at $(date)"
