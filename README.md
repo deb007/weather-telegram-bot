@@ -58,10 +58,11 @@ In your forked repository on GitHub:
 
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
-| `OPENWEATHER_API_KEY` | Your OpenWeatherMap API key | `abcd1234efgh5678` |
+| `OPENWEATHER_API_KEY` | Your OpenWeatherMap API key (required for OpenWeatherMap provider) | `abcd1234efgh5678` |
 | `TELEGRAM_BOT_TOKEN` | Your Telegram bot token | `123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11` |
 | `TELEGRAM_CHAT_ID` | Your Telegram chat ID | `123456789` |
 | `CITY` | City name for weather reports | `London` or `New York` |
+| `WEATHER_PROVIDER` | Weather provider to use (optional, defaults to `openweathermap`) | `openweathermap` or `open_meteo` |
 
 ### 4. Enable GitHub Actions
 
@@ -91,12 +92,25 @@ To run the bot locally for testing:
    ```
 
 2. **Set environment variables**:
+   
+   For OpenWeatherMap (default):
    ```bash
    export OPENWEATHER_API_KEY="your_api_key"
    export TELEGRAM_BOT_TOKEN="your_bot_token"
    export TELEGRAM_CHAT_ID="your_chat_id"
    export CITY="your_city"
    export REPORT_TYPE="morning"  # or "evening"
+   # WEATHER_PROVIDER defaults to "openweathermap"
+   ```
+   
+   For Open-Meteo (free alternative):
+   ```bash
+   export TELEGRAM_BOT_TOKEN="your_bot_token"
+   export TELEGRAM_CHAT_ID="your_chat_id"
+   export CITY="your_city"
+   export WEATHER_PROVIDER="open_meteo"
+   export REPORT_TYPE="morning"  # or "evening"
+   # No API key needed for Open-Meteo!
    ```
 
 3. **Run the bot**:
@@ -110,11 +124,32 @@ To run the bot locally for testing:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENWEATHER_API_KEY` | ✅ Yes | - | OpenWeatherMap API key |
+| `OPENWEATHER_API_KEY` | ❌ Conditional | - | OpenWeatherMap API key (required only for `openweathermap` provider) |
 | `TELEGRAM_BOT_TOKEN` | ✅ Yes | - | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | ✅ Yes | - | Telegram chat ID for reports |
 | `CITY` | ❌ No | `London` | City name for weather reports |
+| `WEATHER_PROVIDER` | ❌ No | `openweathermap` | Weather data provider: `openweathermap` or `open_meteo` |
 | `REPORT_TYPE` | ❌ No | `morning` | Report type: `morning` or `evening` |
+
+### Weather Providers
+
+This bot supports multiple weather data providers:
+
+#### OpenWeatherMap (default)
+- **Requires API key**: Yes (free tier: 1000 calls/day)
+- **Setup**: Get API key from [OpenWeatherMap](https://openweathermap.org/api)
+- **Features**: Detailed hourly forecasts, high accuracy
+- **Usage**: Set `WEATHER_PROVIDER=openweathermap` (or leave unset for default)
+
+#### Open-Meteo (free alternative)
+- **Requires API key**: No (completely free)
+- **Setup**: No registration needed
+- **Features**: Accurate forecasts, no rate limits
+- **Usage**: Set `WEATHER_PROVIDER=open_meteo`
+
+To use Open-Meteo instead of OpenWeatherMap, simply:
+1. Set the `WEATHER_PROVIDER` secret to `open_meteo` in your repository settings
+2. You can remove the `OPENWEATHER_API_KEY` secret (it won't be used)
 
 ### Customizing Schedule
 

@@ -56,9 +56,11 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         CITY: ${{ secrets.CITY }}
+        WEATHER_PROVIDER: ${{ secrets.WEATHER_PROVIDER }}
         REPORT_TYPE: ${{ steps.report_type.outputs.type }}
       run: |
         echo "Running ${{ steps.report_type.outputs.type }} report..."
+        echo "Weather provider: ${WEATHER_PROVIDER:-openweathermap}"
         python main.py
     
     - name: Commit and push data files
