@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 import sys
 import json
+from weather_providers.factory import WeatherProviderFactory
 
 class WeatherTelegramBot:
     def __init__(self):
@@ -11,90 +12,29 @@ class WeatherTelegramBot:
         self.telegram_chat_id = os.environ.get('TELEGRAM_CHAT_ID')
         self.city = os.environ.get('CITY', 'London')
         self.report_type = os.environ.get('REPORT_TYPE', 'morning')  # 'morning' or 'evening'
+        self.weather_provider_name = os.environ.get('WEATHER_PROVIDER', 'openweathermap').lower()
         
-        if not all([self.openweather_api_key, self.telegram_bot_token, self.telegram_chat_id]):
-            raise ValueError("Missing required environment variables")
+        # Validate required environment variables based on provider
+        if not all([self.telegram_bot_token, self.telegram_chat_id]):
+            raise ValueError("Missing required environment variables: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID")
+        
+        # Create weather provider instance
+        api_key = self.openweather_api_key if self.weather_provider_name == 'openweathermap' else None
+        if self.weather_provider_name == 'openweathermap' and not api_key:
+            raise ValueError("OPENWEATHER_API_KEY is required when using OpenWeatherMap provider")
+        
+        try:
+            self.weather_provider = WeatherProviderFactory.create_provider(self.weather_provider_name, api_key)
+        except ValueError as e:
+            raise ValueError(f"Weather provider error: {e}")
     
     def get_coordinates(self):
-        """Get city coordinates using OpenWeatherMap Geocoding API"""
-        geo_url = "http://api.openweathermap.org/geo/1.0/direct"
-        params = {
-            'q': self.city,
-            'limit': 1,
-            'appid': self.openweather_api_key
-        }
-        
-        response = requests.get(geo_url, params=params)
-        response.raise_for_status()
-        
-        data = response.json()
-        if not data:
-            raise Exception(f"City '{self.city}' not found")
-        
-        return data[0]['lat'], data[0]['lon']
+        """Get city coordinates using the configured weather provider"""
+        return self.weather_provider.get_coordinates(self.city)
     
     def get_today_forecast(self, lat, lon):
-        """Get today's forecast (morning report)"""
-        # Use 5-day forecast API to get today's detailed forecast
-        url = "https://api.openweathermap.org/data/2.5/forecast"
-        params = {
-            'lat': lat,
-            'lon': lon,
-            'appid': self.openweather_api_key,
-            'units': 'metric'
-        }
-        
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        # Get today's forecasts only
-        today = datetime.now().date()
-        today_forecasts = []
-        
-        for forecast in data['list']:
-            forecast_datetime = datetime.fromtimestamp(forecast['dt'])
-            if forecast_datetime.date() == today and forecast_datetime.hour >= datetime.now().hour:
-                today_forecasts.append({
-                    'temp': forecast['main']['temp'],
-                    'feels_like': forecast['main']['feels_like'],
-                    'temp_min': forecast['main']['temp_min'],
-                    'temp_max': forecast['main']['temp_max'],
-                    'time': forecast_datetime.strftime('%H:%M'),
-                    'description': forecast['weather'][0]['description']
-                })
-        
-        if not today_forecasts:
-            # Fallback to current weather if no future forecasts for today
-            current_url = "https://api.openweathermap.org/data/2.5/weather"
-            current_params = {
-                'lat': lat,
-                'lon': lon,
-                'appid': self.openweather_api_key,
-                'units': 'metric'
-            }
-            current_response = requests.get(current_url, params=current_params)
-            current_response.raise_for_status()
-            current_data = current_response.json()
-            
-            return {
-                'forecasted_max': round(current_data['main']['temp_max'], 1),
-                'forecasted_min': round(current_data['main']['temp_min'], 1),
-                'current_temp': round(current_data['main']['temp'], 1),
-                'description': current_data['weather'][0]['description'],
-                'detailed_forecast': []
-            }
-        
-        # Calculate max/min from remaining forecasts
-        temps = [f['temp'] for f in today_forecasts]
-        
-        return {
-            'forecasted_max': round(max(temps), 1),
-            'forecasted_min': round(min(temps), 1),
-            'current_temp': round(today_forecasts[0]['temp'], 1),
-            'description': today_forecasts[0]['description'],
-            'detailed_forecast': today_forecasts[:4]  # Next 4 time slots
-        }
+        """Get today's forecast using the configured weather provider"""
+        return self.weather_provider.get_today_forecast(lat, lon)
     
     def get_today_actual_temps(self):
         """Get actual temperatures recorded today (evening report)"""
@@ -103,19 +43,9 @@ class WeatherTelegramBot:
         
         # Get current temperature and add to our records
         lat, lon = self.get_coordinates()
-        current_url = "https://api.openweathermap.org/data/2.5/weather"
-        params = {
-            'lat': lat,
-            'lon': lon,
-            'appid': self.openweather_api_key,
-            'units': 'metric'
-        }
+        current_data = self.weather_provider.get_current_weather(lat, lon)
         
-        response = requests.get(current_url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        current_temp = round(data['main']['temp'], 1)
+        current_temp = round(current_data['temp'], 1)
         current_time = datetime.now().strftime('%H:%M')
         
         # Add current reading to our data
@@ -126,7 +56,7 @@ class WeatherTelegramBot:
         temp_data[today_str].append({
             'time': current_time,
             'temp': current_temp,
-            'description': data['weather'][0]['description']
+            'description': current_data['description']
         })
         
         # Save updated data
@@ -143,7 +73,7 @@ class WeatherTelegramBot:
                 'total_readings': len(today_readings),
                 'first_reading': today_readings[0]['time'],
                 'last_reading': today_readings[-1]['time'],
-                'description': data['weather'][0]['description']
+                'description': current_data['description']
             }
         else:
             return {
@@ -153,7 +83,7 @@ class WeatherTelegramBot:
                 'total_readings': 1,
                 'first_reading': current_time,
                 'last_reading': current_time,
-                'description': data['weather'][0]['description']
+                'description': current_data['description']
             }
     
     def read_temp_storage(self):
