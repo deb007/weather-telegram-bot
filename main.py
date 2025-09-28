@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 import sys
 import json
+import pytz
 from weather_providers.factory import WeatherProviderFactory
 
 class WeatherTelegramBot:
@@ -11,8 +12,17 @@ class WeatherTelegramBot:
         self.telegram_bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
         self.telegram_chat_id = os.environ.get('TELEGRAM_CHAT_ID')
         self.city = os.environ.get('CITY', 'London')
-        self.report_type = os.environ.get('REPORT_TYPE', 'morning')  # 'morning' or 'evening'
+        self.user_timezone = os.environ.get('USER_TIMEZONE', 'UTC')
+        self.report_type = os.environ.get('REPORT_TYPE', 'auto')  # 'morning', 'evening', or 'auto'
         self.weather_provider_name = os.environ.get('WEATHER_PROVIDER', 'openweathermap').lower()
+        
+        # Initialize timezone
+        try:
+            self.timezone = pytz.timezone(self.user_timezone)
+        except pytz.UnknownTimeZoneError:
+            print(f"Warning: Unknown timezone '{self.user_timezone}', using UTC instead")
+            self.timezone = pytz.UTC
+            self.user_timezone = 'UTC'
         
         # Validate required environment variables based on provider
         if not all([self.telegram_bot_token, self.telegram_chat_id]):
@@ -28,7 +38,26 @@ class WeatherTelegramBot:
         except ValueError as e:
             raise ValueError(f"Weather provider error: {e}")
     
-    def get_coordinates(self):
+    def get_user_current_time(self):
+        """Get current time in user's timezone"""
+        utc_now = datetime.now(pytz.UTC)
+        return utc_now.astimezone(self.timezone)
+    
+    def determine_report_type(self):
+        """Determine if it should be morning or evening report based on user's current time"""
+        if self.report_type.lower() != 'auto':
+            return self.report_type.lower()
+        
+        user_time = self.get_user_current_time()
+        current_hour = user_time.hour
+        
+        # Morning report: 5 AM to 12 PM (5-11)
+        # Evening report: 5 PM to 11 PM (17-23)
+        # Default to morning for other times
+        if 17 <= current_hour <= 23:
+            return 'evening'
+        else:
+            return 'morning'
         """Get city coordinates using the configured weather provider"""
         return self.weather_provider.get_coordinates(self.city)
     
@@ -46,10 +75,11 @@ class WeatherTelegramBot:
         current_data = self.weather_provider.get_current_weather(lat, lon)
         
         current_temp = round(current_data['temp'], 1)
-        current_time = datetime.now().strftime('%H:%M')
+        user_time = self.get_user_current_time()
+        current_time = user_time.strftime('%H:%M')
         
         # Add current reading to our data
-        today_str = datetime.now().strftime('%Y-%m-%d')
+        today_str = user_time.strftime('%Y-%m-%d')
         if today_str not in temp_data:
             temp_data[today_str] = []
         
@@ -100,7 +130,8 @@ class WeatherTelegramBot:
         """Save temperature data to storage file"""
         try:
             # Keep only last 7 days of data to avoid file getting too large
-            cutoff_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            user_time = self.get_user_current_time()
+            cutoff_date = (user_time - timedelta(days=7)).strftime('%Y-%m-%d')
             filtered_data = {
                 date: readings for date, readings in data.items() 
                 if date >= cutoff_date
@@ -113,10 +144,12 @@ class WeatherTelegramBot:
     
     def create_morning_message(self, forecast_data):
         """Create morning forecast message"""
-        today_date = datetime.now().strftime("%B %d, %Y")
+        user_time = self.get_user_current_time()
+        today_date = user_time.strftime("%B %d, %Y")
+        timezone_name = self.user_timezone
         
         message = f"""🌅 *Good Morning! Today's Weather Forecast*
-📍 *{self.city}* - {today_date}
+📍 *{self.city}* - {today_date} ({timezone_name})
 
 🌡️ **Temperature Forecast:**
    📈 Max: `{forecast_data['forecasted_max']}°C`
@@ -135,10 +168,12 @@ class WeatherTelegramBot:
     
     def create_evening_message(self, actual_data):
         """Create evening actual temperature report"""
-        today_date = datetime.now().strftime("%B %d, %Y")
+        user_time = self.get_user_current_time()
+        today_date = user_time.strftime("%B %d, %Y")
+        timezone_name = self.user_timezone
         
         message = f"""🌆 *Evening Weather Summary*
-📍 *{self.city}* - {today_date}
+📍 *{self.city}* - {today_date} ({timezone_name})
 
 🌡️ **Today's Actual Temperatures:**
    📈 Max: `{actual_data['actual_max']}°C`
@@ -162,7 +197,8 @@ Sleep well! 😴"""
                 with open('morning_forecast.json', 'r') as f:
                     forecast_data = json.load(f)
                 
-                today_str = datetime.now().strftime('%Y-%m-%d')
+                user_time = self.get_user_current_time()
+                today_str = user_time.strftime('%Y-%m-%d')
                 if today_str in forecast_data:
                     morning_forecast = forecast_data[today_str]
                     
@@ -188,11 +224,12 @@ Sleep well! 😴"""
                 with open('morning_forecast.json', 'r') as f:
                     data = json.load(f)
             
-            today_str = datetime.now().strftime('%Y-%m-%d')
+            user_time = self.get_user_current_time()
+            today_str = user_time.strftime('%Y-%m-%d')
             data[today_str] = forecast_data
             
             # Keep only last 7 days
-            cutoff_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            cutoff_date = (user_time - timedelta(days=7)).strftime('%Y-%m-%d')
             data = {date: forecast for date, forecast in data.items() if date >= cutoff_date}
             
             with open('morning_forecast.json', 'w') as f:
@@ -273,7 +310,15 @@ Sleep well! 😴"""
     
     def run(self):
         """Main function - decides whether to run morning or evening report"""
-        if self.report_type.lower() == 'evening':
+        actual_report_type = self.determine_report_type()
+        user_time = self.get_user_current_time()
+        
+        print(f"User timezone: {self.user_timezone}")
+        print(f"User local time: {user_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        print(f"Report type setting: {self.report_type}")
+        print(f"Determined report type: {actual_report_type}")
+        
+        if actual_report_type == 'evening':
             self.run_evening_report()
         else:
             self.run_morning_report()

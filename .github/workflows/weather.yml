@@ -9,9 +9,10 @@ on:
       report_type:
         description: 'Type of report to run'
         required: true
-        default: 'morning'
+        default: 'auto'
         type: choice
         options:
+        - auto
         - morning
         - evening
 
@@ -33,7 +34,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests
+        pip install -r requirements.txt
     
     - name: Determine report type
       id: report_type
@@ -41,13 +42,8 @@ jobs:
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           echo "type=${{ github.event.inputs.report_type }}" >> $GITHUB_OUTPUT
         else
-          # Check if this is morning (8 AM UTC) or evening (8 PM UTC) cron
-          HOUR=$(date -u +%H)
-          if [ "$HOUR" = "08" ]; then
-            echo "type=morning" >> $GITHUB_OUTPUT
-          else
-            echo "type=evening" >> $GITHUB_OUTPUT
-          fi
+          # When using auto mode, the script will determine based on user timezone
+          echo "type=auto" >> $GITHUB_OUTPUT
         fi
     
     - name: Run weather report
@@ -57,10 +53,12 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         CITY: ${{ secrets.CITY }}
         WEATHER_PROVIDER: ${{ secrets.WEATHER_PROVIDER }}
+        USER_TIMEZONE: ${{ secrets.USER_TIMEZONE }}
         REPORT_TYPE: ${{ steps.report_type.outputs.type }}
       run: |
         echo "Running ${{ steps.report_type.outputs.type }} report..."
         echo "Weather provider: ${WEATHER_PROVIDER:-openweathermap}"
+        echo "User timezone: ${USER_TIMEZONE:-UTC}"
         python main.py
     
     - name: Commit and push data files

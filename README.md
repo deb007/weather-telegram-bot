@@ -63,14 +63,17 @@ In your forked repository on GitHub:
 | `TELEGRAM_CHAT_ID` | Your Telegram chat ID | `123456789` |
 | `CITY` | City name for weather reports | `London` or `New York` |
 | `WEATHER_PROVIDER` | Weather provider to use (optional, defaults to `openweathermap`) | `openweathermap` or `open_meteo` |
+| `USER_TIMEZONE` | Your timezone for automatic morning/evening detection (optional, defaults to `UTC`) | `America/New_York`, `Europe/London`, `Asia/Tokyo` |
 
 ### 4. Enable GitHub Actions
 
 1. Go to the **Actions** tab in your repository
 2. Click **"I understand my workflows, go ahead and enable them"**
-3. The bot will now run automatically:
-   - **Morning reports**: 8:00 AM UTC daily
-   - **Evening reports**: 8:00 PM UTC daily
+3. The bot will now run automatically at:
+   - **1:00 AM UTC**: Automatically detects if it should send morning or evening report based on your timezone
+   - **3:00 PM UTC**: Automatically detects if it should send morning or evening report based on your timezone
+
+The bot will automatically determine whether to send a morning or evening report based on your local time in the configured timezone. Morning reports are sent between 5 AM - 12 PM local time, and evening reports are sent between 5 PM - 11 PM local time.
 
 ## Manual Testing 🧪
 
@@ -79,7 +82,7 @@ You can manually trigger the bot to test your setup:
 1. Go to **Actions** tab in your repository
 2. Click on **"Daily Weather Reports"** workflow
 3. Click **"Run workflow"** button
-4. Choose **morning** or **evening** report type
+4. Choose **auto** (uses your timezone to decide), **morning**, or **evening** report type
 5. Click **"Run workflow"**
 
 ## Local Development 💻
@@ -99,7 +102,8 @@ To run the bot locally for testing:
    export TELEGRAM_BOT_TOKEN="your_bot_token"
    export TELEGRAM_CHAT_ID="your_chat_id"
    export CITY="your_city"
-   export REPORT_TYPE="morning"  # or "evening"
+   export USER_TIMEZONE="America/New_York"  # Optional, defaults to UTC
+   export REPORT_TYPE="auto"  # "auto", "morning", or "evening"
    # WEATHER_PROVIDER defaults to "openweathermap"
    ```
    
@@ -108,8 +112,9 @@ To run the bot locally for testing:
    export TELEGRAM_BOT_TOKEN="your_bot_token"
    export TELEGRAM_CHAT_ID="your_chat_id"
    export CITY="your_city"
+   export USER_TIMEZONE="Europe/London"  # Optional, defaults to UTC
    export WEATHER_PROVIDER="open_meteo"
-   export REPORT_TYPE="morning"  # or "evening"
+   export REPORT_TYPE="auto"  # "auto", "morning", or "evening"
    # No API key needed for Open-Meteo!
    ```
 
@@ -129,7 +134,8 @@ To run the bot locally for testing:
 | `TELEGRAM_CHAT_ID` | ✅ Yes | - | Telegram chat ID for reports |
 | `CITY` | ❌ No | `London` | City name for weather reports |
 | `WEATHER_PROVIDER` | ❌ No | `openweathermap` | Weather data provider: `openweathermap` or `open_meteo` |
-| `REPORT_TYPE` | ❌ No | `morning` | Report type: `morning` or `evening` |
+| `USER_TIMEZONE` | ❌ No | `UTC` | Your timezone for automatic morning/evening detection (e.g., `America/New_York`, `Europe/London`) |
+| `REPORT_TYPE` | ❌ No | `auto` | Report type: `auto` (timezone-based), `morning`, or `evening` |
 
 ### Weather Providers
 
@@ -151,6 +157,31 @@ To use Open-Meteo instead of OpenWeatherMap, simply:
 1. Set the `WEATHER_PROVIDER` secret to `open_meteo` in your repository settings
 2. You can remove the `OPENWEATHER_API_KEY` secret (it won't be used)
 
+### Timezone Configuration
+
+The bot now supports automatic morning/evening report detection based on your local timezone:
+
+#### Setting Your Timezone
+1. Add the `USER_TIMEZONE` secret in your repository settings
+2. Use standard timezone names like:
+   - `America/New_York` (Eastern Time)
+   - `America/Los_Angeles` (Pacific Time)
+   - `Europe/London` (GMT/BST)
+   - `Europe/Paris` (Central European Time)
+   - `Asia/Tokyo` (Japan Standard Time)
+   - `Australia/Sydney` (Australian Eastern Time)
+
+#### Automatic Report Detection
+- **Morning reports**: Sent when it's 5 AM - 12 PM in your timezone
+- **Evening reports**: Sent when it's 5 PM - 11 PM in your timezone
+- **Default**: If your local time is outside these ranges, morning reports are sent
+
+#### Manual Override
+You can still force specific report types by setting `REPORT_TYPE` to:
+- `auto`: Automatic detection based on your timezone (default)
+- `morning`: Always send morning reports
+- `evening`: Always send evening reports
+
 ### Customizing Schedule
 
 To change when reports are sent, edit `.github/workflows/weather.yml`:
@@ -169,7 +200,7 @@ Use [crontab.guru](https://crontab.guru/) to generate custom cron expressions.
 ### Morning Report
 ```
 🌅 Good Morning! Today's Weather Forecast
-📍 London - December 15, 2023
+📍 London - December 15, 2023 (Europe/London)
 
 🌡️ Temperature Forecast:
    📈 Max: 12.5°C
@@ -190,7 +221,7 @@ Have a great day! 🌟
 ### Evening Report
 ```
 🌆 Evening Weather Summary
-📍 London - December 15, 2023
+📍 London - December 15, 2023 (Europe/London)
 
 🌡️ Today's Actual Temperatures:
    📈 Max: 13.1°C
