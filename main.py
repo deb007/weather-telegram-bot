@@ -58,6 +58,8 @@ class WeatherTelegramBot:
             return 'evening'
         else:
             return 'morning'
+    
+    def get_coordinates(self):
         """Get city coordinates using the configured weather provider"""
         return self.weather_provider.get_coordinates(self.city)
     
